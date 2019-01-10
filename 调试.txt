@@ -1,0 +1,48 @@
+1.使用虚拟环境python3.5编译lib和cocoapi/PythonAPI
+    tracking_feat.shape = 1  12811  38  67
+    rfcn中的corr_bbox_net  resnet.py line312
+    this_corr3.shape  1  81 38 50
+    this_corr4.shape  1  289 38 50
+    this_corr5.shape  1  289 38 50
+    rfcn_bbox[0]  1  6076  38  50
+    固定某一层参数  self.con1.parameters(): p.requires_grad=False
+    用res101搭建rfcn  use 3x3 filter with dilation=6 on last res5 feature map instead of 1x1 without dilation
+2.初始化所有的权重,不固定参数
+    /media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/model/faster_rcnn/resnet.py  line279
+    requires_grad=False  全部注释掉
+3.计算l1损失有问题
+    在/media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/model/faster_rcnn/rfcn.py  line 202
+    得到的预测结果和跟踪的目标维度不匹配,
+    在定义的/media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/model/utils/net_utils.py  line73
+    计算损失出错
+    每一个roi  gt所在信息
+    roi_rec.update({'boxes': boxes,  #[x1, y1, x2, y2]   左上角,右下角
+                        'gt_classes': gt_classes,
+                        'gt_overlaps': overlaps,
+                        'max_classes': overlaps.argmax(axis=1),
+                        'max_overlaps': overlaps.max(axis=1),
+                        'flipped': False,
+                        'track_id': track_id})
+    ratio = width / float(height)
+4. RuntimeError: Cannot re-initialize CUDA in forked subprocess. To use CUDA with multiprocessing, you must use the 'spawn' start method
+    去掉/media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/roi_data_layer/roibatchLoader.py  line218  .cuda()
+5.生成的proposal没有置信度
+    /media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/model/rpn/proposal_layer.py
+    增加line 160
+6.RPN中一共选取256个样本
+    IOU 大于阈值0.7的作为正样本,小于0.3的作为负样本,其余的不管
+    cross_entropy损失函数要求:    rpn_cls_score:num_of_samples * cls, rpn_label:num_of_samples
+    F.cross_entropy(rpn_cls_score, rpn_label)
+7.添加卷积层
+    在/media/hp208/4t/zhaoxingjie/graduation_project/d2t/pytorch-detect-to-track/lib/model/faster_rcnn/rfcn.py  line207
+    计算损失维度不匹配,添加卷积层  line45  self.RFCN_match_channel = nn.Conv2d(4*self.n_reg_classes, 4, kernel_size=3, stride=1, padding=1)
+    要在resnet.py中加,
+    trainval_net.py line275
+    resnet.py line312
+    rfcn.py line200
+8.内存非法访问
+    RFCN_loss_cls.append(torch.zeros(1).cuda())
+    RuntimeError: cuda runtime error (77) : an illegal memory access was encountered at /pytorch/torch/lib/THC/generic/THCTensorCopy.c:21
+    使用RFCN的self.RFCN_loss_cls
+    修改:rfcn.py  line32  self.RFCN_loss_cls = 0  -> self.RFCN_loss_cls = []
+        line 156 RFCN_loss_cls.append(torch.zeros(1).cuda())  ->   self.RFCN_loss_cls.append(torch.zeros(1).cuda())
